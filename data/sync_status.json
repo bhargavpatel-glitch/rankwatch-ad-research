@@ -1,0 +1,17 @@
+{
+  "isSyncing": false,
+  "currentStage": "Ready",
+  "progressPercent": 100,
+  "lastSyncedAt": "2026-09-09T13:00:00Z",
+  "recordsCount": 8280,
+  "newAdsCount": 8280,
+  "updatedAdsCount": 0,
+  "unchangedAdsCount": 0,
+  "deletedAdsCount": 0,
+  "tabsProcessed": [
+    "Google Ads",
+    "Meta Ads",
+    "Insta reel research",
+    "Linkedin ad research"
+  ]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "liked",
+    "name": "Liked Ads",
+    "createdAt": "2026-09-09T09:05:42.714Z",
+    "updatedAt": "2026-09-09T10:09:42.740Z",
+    "adIds": [
+      "ad_617a01ff80ea48c3"
+    ]
+  },
+  {
+    "id": "group_1788948597605_s2uzd",
+    "name": "My Group",
+    "createdAt": "2026-09-09T10:09:57.605Z",
+    "updatedAt": "2026-09-09T10:09:57.625Z",
+    "adIds": [
+      "ad_8ce9a94a5db09a18"
+    ]
+  }
+]
