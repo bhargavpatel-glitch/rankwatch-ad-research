@@ -3,6 +3,7 @@ import { X, ExternalLink, Copy, Check, Sparkles, Layers, Share2, Eye, Heart, Mes
 import { CanonicalAd, SearchResultItem } from '../types';
 import { AdCreativeMedia } from './AdCreativeMedia';
 import { getBrandLogo } from '../utils/brandLogos';
+import { loadPreloadedAds, getClientSimilarAds } from '../utils/clientSearch';
 
 interface AdDetailDrawerProps {
   item: SearchResultItem | null;
@@ -19,18 +20,31 @@ export const AdDetailDrawer: React.FC<AdDetailDrawerProps> = ({ item, onClose, o
   useEffect(() => {
     if (!item) return;
 
-    // Fetch similar ads
+    // Fetch similar ads (supports backend API and falls back to preloaded dataset on Netlify)
     setIsLoadingSimilar(true);
-    fetch(`/api/ads/${item.ad.id}/similar?limit=6`)
-      .then((res) => res.json())
-      .then((data) => {
-        setSimilarAds(data.ads || []);
-        setIsLoadingSimilar(false);
-      })
-      .catch((err) => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/ads/${item.ad.id}/similar?limit=6`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.ads)) {
+            setSimilarAds(data.ads);
+            setIsLoadingSimilar(false);
+            return;
+          }
+        }
+      } catch (e) {
+        // Backend offline (Netlify static host)
+      }
+      try {
+        const allAds = await loadPreloadedAds();
+        setSimilarAds(getClientSimilarAds(allAds, item.ad, 6));
+      } catch (err) {
         console.error('Error fetching similar ads:', err);
+      } finally {
         setIsLoadingSimilar(false);
-      });
+      }
+    })();
   }, [item?.ad.id]);
 
   if (!item) return null;

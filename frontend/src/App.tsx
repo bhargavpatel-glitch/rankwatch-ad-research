@@ -11,6 +11,13 @@ import { SavedGroupsView } from './components/SavedGroupsView';
 import { BulkActionBar } from './components/BulkActionBar';
 import { CanonicalAd, SearchResponse, SearchResultItem, AggregatedFilters, FilterState, SyncStatus } from './types';
 import { Compass, ArrowRight } from 'lucide-react';
+import {
+  loadPreloadedAds,
+  getClientFilters,
+  searchClientAds,
+  loadClientSavedGroups,
+  saveClientSavedGroups
+} from './utils/clientSearch';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('library');
@@ -25,10 +32,15 @@ export default function App() {
   const [isDataSourcesOpen, setIsDataSourcesOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
 
-  // Grouping & Saving state
-  const [groups, setGroups] = useState<AdGroup[]>([
-    { id: 'liked', name: 'Liked Ads', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), adIds: [] }
-  ]);
+  // Grouping & Saving state (persisted locally and synced with backend if online)
+  const [groups, setGroups] = useState<AdGroup[]>(() => loadClientSavedGroups());
+
+  useEffect(() => {
+    if (groups && groups.length > 0) {
+      saveClientSavedGroups(groups);
+    }
+  }, [groups]);
+
   const [selectedAdIds, setSelectedAdIds] = useState<Set<string>>(new Set());
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [modalTargetAdIds, setModalTargetAdIds] = useState<string[]>([]);
@@ -95,52 +107,104 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchFilters = () => {
-    fetch('/api/filters')
-      .then((res) => res.json())
-      .then((data) => setFiltersData(data))
-      .catch((err) => console.error('Error fetching filters:', err));
+  const fetchFilters = async () => {
+    try {
+      const res = await fetch('/api/filters');
+      if (res.ok) {
+        const data = await res.json();
+        setFiltersData(data);
+        return;
+      }
+    } catch (err) {
+      // Backend not running (e.g. Netlify static hosting)
+    }
+    const ads = await loadPreloadedAds();
+    setFiltersData(getClientFilters(ads));
   };
 
-  const fetchSyncStatus = () => {
-    fetch('/api/sync/status')
-      .then((res) => res.json())
-      .then((data) => setSyncStatus(data))
-      .catch((err) => console.error('Error fetching sync status:', err));
+  const fetchSyncStatus = async () => {
+    try {
+      const res = await fetch('/api/sync/status');
+      if (res.ok) {
+        const data = await res.json();
+        setSyncStatus(data);
+        return;
+      }
+    } catch (err) {
+      // Backend not running (Netlify static hosting)
+    }
+    setSyncStatus({
+      isSyncing: false,
+      currentStage: 'Idle (Preloaded)',
+      progressPercent: 100,
+      lastSyncedAt: 'Live Preloaded',
+      recordsCount: 8280,
+      newAdsCount: 0,
+      updatedAdsCount: 0,
+      unchangedAdsCount: 8280,
+      deletedAdsCount: 0
+    });
   };
 
-  const fetchGroups = () => {
-    fetch('/api/groups')
-      .then((res) => res.json())
-      .then((data) => {
+  const fetchGroups = async () => {
+    try {
+      const res = await fetch('/api/groups');
+      if (res.ok) {
+        const data = await res.json();
         if (data.groups && data.groups.length > 0) {
           setGroups(data.groups);
+          return;
         }
-      })
-      .catch((err) => console.error('Error fetching groups:', err));
+      }
+    } catch (err) {
+      // Netlify static fallback
+    }
+    setGroups(loadClientSavedGroups());
   };
 
-  // Execute search API request whenever query or filters change
+  // Execute search request (works with backend API and falls back to instant client-side search on Netlify)
   const executeSearch = useCallback(async (isLoadMore = false) => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (debouncedQuery) params.append('q', debouncedQuery);
-      if (filterState.brands.length > 0) params.append('brands', filterState.brands.join(','));
-      if (filterState.platforms.length > 0) params.append('platforms', filterState.platforms.join(','));
-      if (filterState.creativeTypes.length > 0) params.append('creativeTypes', filterState.creativeTypes.join(','));
-      if (filterState.categories.length > 0) params.append('categories', filterState.categories.join(','));
-      if (filterState.sort) params.append('sort', filterState.sort);
-      params.append('page', String(isLoadMore ? filterState.page + 1 : filterState.page));
-      params.append('limit', String(filterState.limit));
+      let data: SearchResponse | null = null;
+      try {
+        const params = new URLSearchParams();
+        if (debouncedQuery) params.append('q', debouncedQuery);
+        if (filterState.brands.length > 0) params.append('brands', filterState.brands.join(','));
+        if (filterState.platforms.length > 0) params.append('platforms', filterState.platforms.join(','));
+        if (filterState.creativeTypes.length > 0) params.append('creativeTypes', filterState.creativeTypes.join(','));
+        if (filterState.categories.length > 0) params.append('categories', filterState.categories.join(','));
+        if (filterState.sort) params.append('sort', filterState.sort);
+        params.append('page', String(isLoadMore ? filterState.page + 1 : filterState.page));
+        params.append('limit', String(filterState.limit));
 
-      const res = await fetch(`/api/ads/search?${params.toString()}`);
-      const data: SearchResponse = await res.json();
+        const res = await fetch(`/api/ads/search?${params.toString()}`);
+        if (res.ok) {
+          const parsed = await res.json();
+          if (parsed && Array.isArray(parsed.results)) {
+            data = parsed;
+          }
+        }
+      } catch (backendErr) {
+        // Backend offline or on static Netlify host
+      }
+
+      // If backend was not reachable or returned invalid/HTML response, use instant client-side search!
+      if (!data || !data.results) {
+        const ads = await loadPreloadedAds();
+        data = searchClientAds(
+          ads,
+          debouncedQuery,
+          filterState,
+          isLoadMore ? filterState.page + 1 : 1,
+          filterState.limit
+        );
+      }
 
       // Update map of ads for quick lookup
       setAllAdsMap(prev => {
         const next = new Map(prev);
-        for (const item of data.results) {
+        for (const item of data!.results) {
           next.set(item.ad.id, item.ad);
         }
         return next;
@@ -227,17 +291,19 @@ export default function App() {
   const handleToggleLike = async (adId: string) => {
     const isCurrentlyLiked = likedAdIds.has(adId);
     if (isCurrentlyLiked) {
-      // Remove from liked
-      await fetch(`/api/groups/liked/ads/${adId}`, { method: 'DELETE' });
+      try {
+        await fetch(`/api/groups/liked/ads/${adId}`, { method: 'DELETE' });
+      } catch (e) {}
       setGroups(prev => prev.map(g => g.id === 'liked' ? { ...g, adIds: g.adIds.filter(id => id !== adId) } : g));
       showToast('Removed from liked videos');
     } else {
-      // Add to liked
-      await fetch('/api/groups/liked/ads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adIds: [adId] })
-      });
+      try {
+        await fetch('/api/groups/liked/ads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adIds: [adId] })
+        });
+      } catch (e) {}
       setGroups(prev => prev.map(g => g.id === 'liked' ? { ...g, adIds: [...new Set([...g.adIds, adId])] } : g));
       showToast('Added to liked videos', 'Liked videos', () => {
         setCurrentTab('groups');
@@ -246,48 +312,81 @@ export default function App() {
   };
 
   const handleSaveToGroup = async (groupId: string, adIds: string[]) => {
-    const res = await fetch(`/api/groups/${groupId}/ads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adIds })
-    });
-    const data = await res.json();
-    if (data.group) {
-      setGroups(prev => prev.map(g => g.id === groupId ? data.group : g));
-    }
+    try {
+      const res = await fetch(`/api/groups/${groupId}/ads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adIds })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.group) {
+          setGroups(prev => prev.map(g => g.id === groupId ? data.group : g));
+          setSelectedAdIds(new Set());
+          return;
+        }
+      }
+    } catch (e) {}
+    setGroups(prev => prev.map(g => {
+      if (g.id === groupId) {
+        return { ...g, adIds: [...new Set([...g.adIds, ...adIds])], updatedAt: new Date().toISOString() };
+      }
+      return g;
+    }));
     setSelectedAdIds(new Set());
   };
 
   const handleCreateGroup = async (name: string, adIds: string[]) => {
-    const res = await fetch('/api/groups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-    const data = await res.json();
-    if (data.group) {
-      if (adIds.length > 0) {
-        const res2 = await fetch(`/api/groups/${data.group.id}/ads`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ adIds })
-        });
-        const data2 = await res2.json();
-        setGroups(prev => [...prev, data2.group || data.group]);
-      } else {
-        setGroups(prev => [...prev, data.group]);
+    try {
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.group) {
+          if (adIds.length > 0) {
+            const res2 = await fetch(`/api/groups/${data.group.id}/ads`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ adIds })
+            });
+            if (res2.ok) {
+              const data2 = await res2.json();
+              setGroups(prev => [...prev, data2.group || data.group]);
+              setSelectedAdIds(new Set());
+              return;
+            }
+          }
+          setGroups(prev => [...prev, data.group]);
+          setSelectedAdIds(new Set());
+          return;
+        }
       }
-    }
+    } catch (e) {}
+    const newGroup: AdGroup = {
+      id: 'grp_' + Date.now().toString(36),
+      name,
+      adIds: [...adIds],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setGroups(prev => [...prev, newGroup]);
     setSelectedAdIds(new Set());
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
+    try {
+      await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
+    } catch (e) {}
     setGroups(prev => prev.filter(g => g.id !== groupId));
   };
 
   const handleRemoveAdFromGroup = async (groupId: string, adId: string) => {
-    await fetch(`/api/groups/${groupId}/ads/${adId}`, { method: 'DELETE' });
+    try {
+      await fetch(`/api/groups/${groupId}/ads/${adId}`, { method: 'DELETE' });
+    } catch (e) {}
     setGroups(prev => prev.map(g => g.id === groupId ? { ...g, adIds: g.adIds.filter(id => id !== adId) } : g));
   };
 
