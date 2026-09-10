@@ -68,6 +68,14 @@ export const AdCard: React.FC<AdCardProps> = ({
           </button>
         </div>
 
+        {/* Ad ID Badge (Bottom-Left of Media) - Highly visible */}
+        <div className="absolute bottom-2.5 left-2.5 z-20 pointer-events-none">
+          <span className="px-2 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-white/20 text-[10.5px] font-mono font-bold text-[#2fe593] shadow-lg flex items-center gap-1">
+            <span className="text-[#94a3b8] font-normal">ID:</span>
+            <span>{getAdDisplayId(ad)}</span>
+          </span>
+        </div>
+
         {/* Floating Action Cluster: Heart & Bookmark (Top-Right) */}
         <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5 pointer-events-auto">
           {/* Heart / Like Button - Fills GREEN when liked */}

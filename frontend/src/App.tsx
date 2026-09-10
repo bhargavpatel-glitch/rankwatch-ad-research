@@ -130,19 +130,23 @@ export default function App() {
         setSyncStatus(data);
         return;
       }
-    } catch (err) {
+    } catch {
       // Backend not running (Netlify static hosting)
     }
-    setSyncStatus({
-      isSyncing: false,
-      currentStage: 'Idle (Preloaded)',
-      progressPercent: 100,
-      lastSyncedAt: 'Live Preloaded',
-      recordsCount: 8280,
-      newAdsCount: 0,
-      updatedAdsCount: 0,
-      unchangedAdsCount: 8280,
-      deletedAdsCount: 0
+    setSyncStatus(prev => {
+      // If currently syncing in client mode, don't overwrite with idle
+      if (prev && prev.isSyncing) return prev;
+      return prev || {
+        isSyncing: false,
+        currentStage: 'Idle (Preloaded)',
+        progressPercent: 100,
+        lastSyncedAt: 'Live Preloaded',
+        recordsCount: 7277,
+        newAdsCount: 0,
+        updatedAdsCount: 0,
+        unchangedAdsCount: 7277,
+        deletedAdsCount: 0
+      };
     });
   };
 
