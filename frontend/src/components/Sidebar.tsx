@@ -105,7 +105,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="text-[11px] text-[#94a3b8] flex items-center justify-between">
             <span>Last Synced</span>
             <span className="text-[#cbd5e1] font-mono text-[10px]">
-              {syncStatus?.lastSyncedAt ? new Date(syncStatus.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '06:30 PM'}
+              {(() => {
+                if (!syncStatus?.lastSyncedAt) return 'Just now';
+                if (syncStatus.lastSyncedAt.startsWith('Today') || syncStatus.lastSyncedAt.startsWith('Live')) {
+                  return syncStatus.lastSyncedAt;
+                }
+                const d = new Date(syncStatus.lastSyncedAt);
+                return isNaN(d.getTime()) ? syncStatus.lastSyncedAt : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              })()}
             </span>
           </div>
 
