@@ -3,7 +3,7 @@ import { X, ExternalLink, Copy, Check, Sparkles, Layers, Share2, Eye, Heart, Mes
 import { CanonicalAd, SearchResultItem } from '../types';
 import { AdCreativeMedia } from './AdCreativeMedia';
 import { getBrandLogo } from '../utils/brandLogos';
-import { loadPreloadedAds, getClientSimilarAds } from '../utils/clientSearch';
+import { loadPreloadedAds, getClientSimilarAds, getAdDisplayId } from '../utils/clientSearch';
 
 interface AdDetailDrawerProps {
   item: SearchResultItem | null;
@@ -80,6 +80,12 @@ export const AdDetailDrawer: React.FC<AdDetailDrawerProps> = ({ item, onClose, o
             </div>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#0e261a] text-[#2fe593] border border-[#184530]">
               {ad.platform}
+            </span>
+            <span
+              className="px-2 py-0.5 rounded-md bg-[#181b21] border border-[#262c3a] text-[11px] font-mono text-[#94a3b8] truncate max-w-[130px]"
+              title={`Ad ID: ${getAdDisplayId(ad)}`}
+            >
+              #{getAdDisplayId(ad)}
             </span>
           </div>
 

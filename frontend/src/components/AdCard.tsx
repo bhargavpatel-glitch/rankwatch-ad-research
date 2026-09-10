@@ -4,6 +4,7 @@ import { SearchResultItem } from '../types';
 import { AdCreativeMedia } from './AdCreativeMedia';
 import { getBrandLogo } from '../utils/brandLogos';
 import { PlatformIcon } from './PlatformIcon';
+import { getAdDisplayId } from '../utils/clientSearch';
 
 interface AdCardProps {
   item: SearchResultItem;
@@ -136,9 +137,17 @@ export const AdCard: React.FC<AdCardProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981] fill-[#10b981]/20 flex-shrink-0" />
             </div>
 
-            {/* Platform Icon (Right-Aligned) - Shows Google, Meta, Instagram, LinkedIn */}
-            <div className="flex items-center justify-end flex-shrink-0" title={`Platform: ${ad.platform}`}>
-              <PlatformIcon platform={ad.platform} className="w-4 h-4" />
+            {/* Right: Ad ID Pill & Platform Icon */}
+            <div className="flex items-center gap-1.5 justify-end flex-shrink-0">
+              <span
+                className="px-1.5 py-0.5 rounded-md bg-[#181b21] border border-[#262c3a] text-[10px] font-mono text-[#94a3b8] max-w-[110px] truncate"
+                title={`Ad ID: ${getAdDisplayId(ad)}`}
+              >
+                #{getAdDisplayId(ad)}
+              </span>
+              <div className="flex items-center justify-center" title={`Platform: ${ad.platform}`}>
+                <PlatformIcon platform={ad.platform} className="w-4 h-4" />
+              </div>
             </div>
           </div>
 
@@ -176,16 +185,18 @@ export const AdCard: React.FC<AdCardProps> = ({
               <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover/inspect:translate-x-1" />
             </button>
 
-            {ad.sourceAdUrl && (
+            {/* External Original Ad Link Button */}
+            {(ad.sourceAdUrl || ad.landingPageUrl) && (
               <a
-                href={ad.sourceAdUrl}
+                href={ad.sourceAdUrl || ad.landingPageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="text-[#64748b] hover:text-[#2fe593] p-1 rounded transition-colors"
-                title="Open original ad source"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#181b21] hover:bg-[#222630] text-[#cbd5e1] hover:text-[#2fe593] border border-[#262c3a] text-[11px] font-medium transition-colors"
+                title={`Open original ad on ${ad.platform}`}
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                <span>View Ad</span>
+                <ExternalLink className="w-3 h-3 text-[#2fe593]" />
               </a>
             )}
           </div>

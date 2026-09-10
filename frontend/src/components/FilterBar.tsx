@@ -164,7 +164,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   {state.brands.length}
                 </span>
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-[#64748b]" />
+              {state.brands.length > 0 ? (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange({ brands: [], page: 1 });
+                  }}
+                  className="hover:text-white p-0.5 rounded-full"
+                  title="Clear brand filters"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </span>
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-[#64748b]" />
+              )}
             </button>
 
             {openDropdown === 'brand' && (
@@ -218,7 +231,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                   {state.platforms.length}
                 </span>
               )}
-              <ChevronDown className="w-3.5 h-3.5 text-[#64748b]" />
+              {state.platforms.length > 0 ? (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange({ platforms: [], page: 1 });
+                  }}
+                  className="hover:text-white p-0.5 rounded-full"
+                  title="Clear platform filters"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </span>
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-[#64748b]" />
+              )}
             </button>
 
             {openDropdown === 'platform' && (
@@ -300,6 +326,45 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                           <span className="truncate">{t.name}</span>
                         </div>
                         <span className="text-[10px] font-mono text-[#64748b] ml-2 flex-shrink-0">{t.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Sort Dropdown (Newest First, Oldest First, Most Relevant) */}
+          <div className="relative">
+            <button
+              onClick={() => toggleDropdown('sort')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all ${
+                state.sort && state.sort !== 'relevant'
+                  ? 'bg-[#0e261a] text-[#2fe593] border-[#2fe593]'
+                  : 'bg-[#0f1115] text-[#cbd5e1] border-[#222630] hover:border-[#2d3340] hover:text-white'
+              }`}
+            >
+              <span>{sortLabels[state.sort || 'relevant']}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#64748b]" />
+            </button>
+
+            {openDropdown === 'sort' && (
+              <div className="absolute left-0 top-full mt-1.5 w-48 bg-[#0f1115] border border-[#222630] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="space-y-1">
+                  {(['relevant', 'newest', 'oldest', 'brand_asc', 'brand_desc'] as const).map((s) => {
+                    const isSelected = (state.sort || 'relevant') === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => handleSelectSort(s)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-colors ${
+                          isSelected
+                            ? 'bg-[#0e261a] text-[#2fe593] font-bold'
+                            : 'text-[#cbd5e1] hover:bg-[#181b21] hover:text-white'
+                        }`}
+                      >
+                        <span>{sortLabels[s]}</span>
+                        {isSelected && <Check className="w-3 h-3 text-[#2fe593] stroke-[3]" />}
                       </button>
                     );
                   })}

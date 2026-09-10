@@ -3,14 +3,46 @@ import { AdGroup } from '../components/SaveToGroupModal';
 
 let cachedAds: CanonicalAd[] | null = null;
 
+// Extract human-readable Ad ID (the number or ID code at the end of the URL, or clean ad id)
+export function getAdDisplayId(ad: CanonicalAd): string {
+  const url = ad.sourceAdUrl || '';
+  if (url) {
+    try {
+      const urlObj = new URL(url);
+      // 1. Direct query param IDs
+      if (urlObj.searchParams.get('id')) return urlObj.searchParams.get('id')!;
+      if (urlObj.searchParams.get('ad_id')) return urlObj.searchParams.get('ad_id')!;
+      if (urlObj.searchParams.get('view_all_page_id')) return urlObj.searchParams.get('view_all_page_id')!;
+
+      // 2. Clean pathname
+      const cleanPath = urlObj.pathname.replace(/\/+$/, '');
+      const segments = cleanPath.split('/').filter(Boolean);
+      if (segments.length > 0) {
+        const last = segments[segments.length - 1];
+        if (last && last !== 'library' && last !== 'anywhere') {
+          return last;
+        }
+        if (segments.length > 1) {
+          return segments[segments.length - 2];
+        }
+      }
+    } catch {
+      const match = url.match(/([0-9A-Za-z_]{6,})/g);
+      if (match && match.length > 0) return match[match.length - 1];
+    }
+  }
+  return (ad.id || '').replace(/^ad_/, '');
+}
+
 export async function loadPreloadedAds(): Promise<CanonicalAd[]> {
   if (cachedAds && cachedAds.length > 0) return cachedAds;
 
   try {
     const res = await fetch('/data/ads.json');
     if (!res.ok) throw new Error('Failed to load /data/ads.json: ' + res.status);
-    const data = await res.json();
-    cachedAds = data as CanonicalAd[];
+    const data: CanonicalAd[] = await res.json();
+    // Only keep ads that have an original source ad link as requested by user
+    cachedAds = data.filter(ad => !!(ad.sourceAdUrl && ad.sourceAdUrl.trim()));
     return cachedAds;
   } catch (err) {
     console.warn('Could not load /data/ads.json:', err);
@@ -66,7 +98,8 @@ export function searchClientAds(
   const qClean = (query || '').toLowerCase().trim();
   const terms = qClean ? qClean.split(/\s+/).filter(Boolean) : [];
 
-  let filtered = ads;
+  // Guarantee we only process ads with a valid original ad link
+  let filtered = ads.filter(a => !!(a.sourceAdUrl && a.sourceAdUrl.trim()));
 
   // Filter: Brands
   if (filters.brands && filters.brands.length > 0) {
@@ -86,10 +119,17 @@ export function searchClientAds(
     filtered = filtered.filter(a => a.creativeType && cSet.has(a.creativeType.toLowerCase()));
   }
 
+  // Filter: Categories
+  if (filters.categories && filters.categories.length > 0) {
+    const catSet = new Set(filters.categories.map(c => c.toLowerCase()));
+    filtered = filtered.filter(a => a.category && catSet.has(a.category.toLowerCase()));
+  }
+
   // Score & Rank
   const scoredItems: SearchResultItem[] = [];
 
-  for (const ad of filtered) {
+  for (let i = 0; i < filtered.length; i++) {
+    const ad = filtered[i];
     let score = 50; // base score
     const matchedFields: string[] = [];
     let exactMatch = false;
@@ -173,8 +213,22 @@ export function searchClientAds(
     });
   }
 
-  // Sort descending by score
-  scoredItems.sort((a, b) => b.score - a.score);
+  // Sort based on sort option
+  const sortMode = filters.sort || 'relevant';
+  if (sortMode === 'newest') {
+    scoredItems.reverse();
+  } else if (sortMode === 'oldest') {
+    // Keep as is (original order)
+  } else if (sortMode === 'brand_asc') {
+    scoredItems.sort((a, b) => (a.ad.brand || '').localeCompare(b.ad.brand || ''));
+  } else if (sortMode === 'brand_desc') {
+    scoredItems.sort((a, b) => (b.ad.brand || '').localeCompare(a.ad.brand || ''));
+  } else {
+    // 'relevant': sort descending by relevance score
+    if (terms.length > 0) {
+      scoredItems.sort((a, b) => b.score - a.score);
+    }
+  }
 
   const totalResults = scoredItems.length;
   const startIdx = (page - 1) * limit;
@@ -197,10 +251,10 @@ export function searchClientAds(
     results: pageResults,
     tookMs: Math.max(1, elapsed),
     availableFiltersSummary: {
-      brandsCount: new Set(ads.map(a => a.brand)).size,
-      platformsCount: new Set(ads.map(a => a.platform)).size,
-      categoriesCount: new Set(ads.map(a => a.category)).size,
-      creativeTypesCount: new Set(ads.map(a => a.creativeType)).size
+      brandsCount: new Set(filtered.map(a => a.brand)).size,
+      platformsCount: new Set(filtered.map(a => a.platform)).size,
+      categoriesCount: new Set(filtered.map(a => a.category)).size,
+      creativeTypesCount: new Set(filtered.map(a => a.creativeType)).size
     },
     suggestedQueries: ['AI Visibility', 'Enterprise Pricing', 'Semrush', 'Profound', 'Demo']
   };
@@ -212,7 +266,7 @@ export function getClientSimilarAds(ads: CanonicalAd[], targetAd: CanonicalAd, l
   const targetPlatform = (targetAd.platform || '').toLowerCase();
 
   return ads
-    .filter(a => a.id !== targetAd.id)
+    .filter(a => a.id !== targetAd.id && !!(a.sourceAdUrl && a.sourceAdUrl.trim()))
     .map(a => {
       let sim = 0;
       if (a.brand && a.brand.toLowerCase() === targetBrand) sim += 30;
@@ -257,3 +311,4 @@ export function saveClientSavedGroups(groups: AdGroup[]) {
     console.warn('Error saving groups to localStorage', e);
   }
 }
+
