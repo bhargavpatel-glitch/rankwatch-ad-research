@@ -145,17 +145,9 @@ export const AdCard: React.FC<AdCardProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981] fill-[#10b981]/20 flex-shrink-0" />
             </div>
 
-            {/* Right: Ad ID Pill & Platform Icon */}
-            <div className="flex items-center gap-1.5 justify-end flex-shrink-0">
-              <span
-                className="px-1.5 py-0.5 rounded-md bg-[#181b21] border border-[#262c3a] text-[10px] font-mono text-[#94a3b8] max-w-[110px] truncate"
-                title={`Ad ID: ${getAdDisplayId(ad)}`}
-              >
-                #{getAdDisplayId(ad)}
-              </span>
-              <div className="flex items-center justify-center" title={`Platform: ${ad.platform}`}>
-                <PlatformIcon platform={ad.platform} className="w-4 h-4" />
-              </div>
+            {/* Right: Platform Icon */}
+            <div className="flex items-center justify-end flex-shrink-0" title={`Platform: ${ad.platform}`}>
+              <PlatformIcon platform={ad.platform} className="w-4 h-4" />
             </div>
           </div>
 
