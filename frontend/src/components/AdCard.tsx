@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Heart, Bookmark, Check, CheckCircle2, ArrowRight } from 'lucide-react';
+import { ExternalLink, Heart, Bookmark, Check, CheckCircle2, ArrowRight, Eye } from 'lucide-react';
 import { SearchResultItem } from '../types';
 import { AdCreativeMedia } from './AdCreativeMedia';
 import { getBrandLogo } from '../utils/brandLogos';
@@ -145,9 +145,20 @@ export const AdCard: React.FC<AdCardProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981] fill-[#10b981]/20 flex-shrink-0" />
             </div>
 
-            {/* Right: Platform Icon */}
-            <div className="flex items-center justify-end flex-shrink-0" title={`Platform: ${ad.platform}`}>
-              <PlatformIcon platform={ad.platform} className="w-4 h-4" />
+            {/* Right: Impressions Pill (if available) & Platform Icon */}
+            <div className="flex items-center gap-1.5 justify-end flex-shrink-0">
+              {ad.metrics?.impressions && (
+                <span
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#0e261a] border border-[#184530] text-[10.5px] font-mono font-bold text-[#2fe593]"
+                  title={`LinkedIn Impressions: ${ad.metrics.impressions}`}
+                >
+                  <Eye className="w-3 h-3 text-[#2fe593]" />
+                  <span>{ad.metrics.impressions} imp</span>
+                </span>
+              )}
+              <div className="flex items-center justify-center" title={`Platform: ${ad.platform}`}>
+                <PlatformIcon platform={ad.platform} className="w-4 h-4" />
+              </div>
             </div>
           </div>
 

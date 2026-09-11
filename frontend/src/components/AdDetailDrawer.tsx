@@ -197,7 +197,13 @@ export const AdDetailDrawer: React.FC<AdDetailDrawerProps> = ({ item, onClose, o
               <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">
                 Engagement & Impressions
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {ad.metrics.impressions && (
+                  <div className="p-2.5 rounded-lg bg-[#0a0b0e] border border-[#222630] text-center">
+                    <div className="text-[10px] text-[#2fe593] font-semibold">Impressions</div>
+                    <div className="text-xs font-bold text-white font-mono mt-0.5">{ad.metrics.impressions}</div>
+                  </div>
+                )}
                 {ad.metrics.views && (
                   <div className="p-2.5 rounded-lg bg-[#0a0b0e] border border-[#222630] text-center">
                     <div className="text-[10px] text-[#64748b]">Views</div>

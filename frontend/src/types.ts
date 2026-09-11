@@ -21,6 +21,7 @@ export interface CanonicalAd {
     views?: string | number;
     likes?: string | number;
     comments?: string | number;
+    impressions?: string | number;
   };
   additionalDetails?: string;
   rawRowData: Record<string, any>;

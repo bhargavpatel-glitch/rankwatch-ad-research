@@ -68,6 +68,7 @@ FIELD_SYNONYMS = {
     'views': [r'\bviews\b'],
     'likes': [r'\blikes\b'],
     'comments': [r'\bcomments\b'],
+    'impressions': [r'\bimpressions\b', r'\bimpression\b'],
     'additional': [
         r'\badditional\s*ad\s*details\b', r'\bimportant\s*observations\b',
         r'\bmeta\s*ad\s*id\b', r'\badditional\s*ad\s*information\b', r'\bverification\s*notes\b'
@@ -402,10 +403,12 @@ def ingest_from_xlsx(sheet_id=DEFAULT_SHEET_ID):
                 views = get_val('views')
                 likes = get_val('likes')
                 comments = get_val('comments')
+                impressions = get_val('impressions')
                 metrics = {}
-                if views: metrics['views'] = views
-                if likes: metrics['likes'] = likes
-                if comments: metrics['comments'] = comments
+                if views and views not in ['-', 'none', 'n/a', 'N/A']: metrics['views'] = views
+                if likes and likes not in ['-', 'none', 'n/a', 'N/A']: metrics['likes'] = likes
+                if comments and comments not in ['-', 'none', 'n/a', 'N/A']: metrics['comments'] = comments
+                if impressions and impressions not in ['-', 'none', 'n/a', 'N/A']: metrics['impressions'] = impressions
 
                 additional = get_val('additional')
 
