@@ -110,6 +110,7 @@ export default function App() {
   }, []);
 
   const initApp = async () => {
+    setIsLoading(true);
     try {
       const srcList = await fetchSheetSourcesFromDB();
       setSources(srcList);
@@ -126,8 +127,15 @@ export default function App() {
         unchangedAdsCount: ads.length,
         deletedAdsCount: 0
       });
+
+      // Immediately render initial results
+      const initialData = searchClientAds(ads, debouncedQuery, filterState, 1, filterState.limit);
+      setSearchResponse(initialData);
+      setAllAdsMap(new Map(initialData.results.map(r => [r.ad.id, r.ad])));
     } catch (e) {
       console.error('App init error:', e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
