@@ -6,6 +6,21 @@ frontend/node_modules/
 # Environment files
 .env
 .env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+
+# Service Account & Secret Keys
+*.json.secret
+*credentials*.json
+*service-account*.json
+*.pem
+*.key
+*.p12
+
+# Build Outputs
+frontend/dist/
+dist/
 
 # Logs
 *.log

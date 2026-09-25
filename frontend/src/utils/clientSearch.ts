@@ -5,6 +5,7 @@ let cachedAds: CanonicalAd[] | null = null;
 
 // Extract human-readable Ad ID (the number or ID code at the end of the URL, or clean ad id)
 export function getAdDisplayId(ad: CanonicalAd): string {
+  if (ad.platformAdId) return ad.platformAdId;
   const url = ad.sourceAdUrl || '';
   if (url) {
     try {
@@ -50,11 +51,17 @@ export async function loadPreloadedAds(): Promise<CanonicalAd[]> {
   }
 }
 
+export function setCachedAds(ads: CanonicalAd[]) {
+  cachedAds = ads;
+}
+
 export function getClientFilters(ads: CanonicalAd[]): AggregatedFilters {
   const brandMap = new Map<string, number>();
   const platformMap = new Map<string, number>();
   const typeMap = new Map<string, number>();
   const categoryMap = new Map<string, number>();
+  const sourceMap = new Map<string, number>();
+  const tabMap = new Map<string, number>();
 
   for (const ad of ads) {
     if (ad.brand) {
@@ -69,6 +76,12 @@ export function getClientFilters(ads: CanonicalAd[]): AggregatedFilters {
     if (ad.category) {
       categoryMap.set(ad.category, (categoryMap.get(ad.category) || 0) + 1);
     }
+    if (ad.sourceSheetId) {
+      sourceMap.set(ad.sourceSheetId, (sourceMap.get(ad.sourceSheetId) || 0) + 1);
+    }
+    if (ad.sourceTab) {
+      tabMap.set(ad.sourceTab, (tabMap.get(ad.sourceTab) || 0) + 1);
+    }
   }
 
   const toArr = (map: Map<string, number>) =>
@@ -81,6 +94,8 @@ export function getClientFilters(ads: CanonicalAd[]): AggregatedFilters {
     platforms: toArr(platformMap),
     creativeTypes: toArr(typeMap),
     categories: toArr(categoryMap),
+    sources: Array.from(sourceMap.entries()).map(([id, count]) => ({ id, name: id, count })),
+    tabs: Array.from(tabMap.entries()).map(([id, count]) => ({ id, name: id, count })),
     topics: [],
     hashtags: [],
     totalAds: ads.length
@@ -100,6 +115,18 @@ export function searchClientAds(
 
   // Guarantee we only process ads with a valid original ad link
   let filtered = ads.filter(a => !!(a.sourceAdUrl && a.sourceAdUrl.trim()));
+
+  // Filter: Sources
+  if (filters.sources && filters.sources.length > 0) {
+    const sSet = new Set(filters.sources.map(s => s.toLowerCase()));
+    filtered = filtered.filter(a => a.sourceSheetId && sSet.has(a.sourceSheetId.toLowerCase()));
+  }
+
+  // Filter: Tabs
+  if (filters.tabs && filters.tabs.length > 0) {
+    const tSet = new Set(filters.tabs.map(t => t.toLowerCase()));
+    filtered = filtered.filter(a => a.sourceTab && tSet.has(a.sourceTab.toLowerCase()));
+  }
 
   // Filter: Brands
   if (filters.brands && filters.brands.length > 0) {
@@ -254,7 +281,9 @@ export function searchClientAds(
       brandsCount: new Set(filtered.map(a => a.brand)).size,
       platformsCount: new Set(filtered.map(a => a.platform)).size,
       categoriesCount: new Set(filtered.map(a => a.category)).size,
-      creativeTypesCount: new Set(filtered.map(a => a.creativeType)).size
+      creativeTypesCount: new Set(filtered.map(a => a.creativeType)).size,
+      sourcesCount: new Set(filtered.map(a => a.sourceSheetId)).size,
+      tabsCount: new Set(filtered.map(a => a.sourceTab)).size,
     },
     suggestedQueries: ['AI Visibility', 'Enterprise Pricing', 'Semrush', 'Profound', 'Demo']
   };
@@ -311,4 +340,3 @@ export function saveClientSavedGroups(groups: AdGroup[]) {
     console.warn('Error saving groups to localStorage', e);
   }
 }
-

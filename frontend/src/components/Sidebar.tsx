@@ -1,6 +1,7 @@
 import React from 'react';
-import { Layers, Compass, Bookmark, Database } from 'lucide-react';
+import { Layers, Compass, Bookmark, Database, Cloud, ShieldAlert } from 'lucide-react';
 import { SyncStatus } from '../types';
+import { isSupabaseConfigured } from '../utils/supabaseClient';
 
 interface SidebarProps {
   currentTab: string;
@@ -17,8 +18,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   syncStatus,
   totalAds,
   savedAdsCount,
-  onOpenDataSources
+  onOpenDataSources,
 }) => {
+  const isCloudConnected = isSupabaseConfigured();
+
   const navItems = [
     { id: 'library', label: 'Ad Library', icon: Layers, count: totalAds },
     { id: 'explore', label: 'Explore Concepts', icon: Compass },
@@ -37,9 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </svg>
         </div>
         <div className="leading-tight">
-          <div className="font-bold text-[13.5px] tracking-tight text-white">
-            Rankwatch Ad
-          </div>
+          <div className="font-bold text-[13.5px] tracking-tight text-white">Rankwatch Ad</div>
           <div className="text-[11px] text-[#94a3b8] font-normal">Research tool</div>
         </div>
       </div>
@@ -86,20 +87,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </div>
 
-      {/* Dataset & Sync Status Footer */}
-      <div className="p-4 border-t border-[#222630] bg-[#07080a]">
+      {/* Database Connection & Sync Status Footer */}
+      <div className="p-4 border-t border-[#222630] bg-[#07080a] space-y-3">
+        {/* Cloud Shared DB Status Badge */}
+        <div
+          onClick={onOpenDataSources}
+          className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+            isCloudConnected
+              ? 'bg-[#0e261a]/60 border-[#184530] text-[#2fe593]'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/15'
+          }`}
+          title={
+            isCloudConnected
+              ? 'Supabase shared database is connected'
+              : 'Click to configure Supabase for team sharing'
+          }
+        >
+          <div className="flex items-center gap-2 truncate">
+            {isCloudConnected ? (
+              <Cloud className="w-3.5 h-3.5 flex-shrink-0" />
+            ) : (
+              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0" />
+            )}
+            <span className="text-[11px] font-semibold truncate">
+              {isCloudConnected ? 'Shared Supabase DB' : 'Local Storage Mode'}
+            </span>
+          </div>
+          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/40">
+            {isCloudConnected ? 'Cloud' : 'Local'}
+          </span>
+        </div>
+
+        {/* Sync Summary Card */}
         <div className="bg-[#0f1115] rounded-2xl p-3.5 border border-[#222630] space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-white flex items-center gap-2">
               <span className="relative flex h-2 w-2">
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${syncStatus?.isSyncing ? 'bg-amber-400' : 'bg-[#10b981]'} opacity-75`}></span>
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${syncStatus?.isSyncing ? 'bg-amber-500' : 'bg-[#10b981]'}`}></span>
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
+                    syncStatus?.isSyncing ? 'bg-amber-400' : 'bg-[#10b981]'
+                  } opacity-75`}
+                ></span>
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    syncStatus?.isSyncing ? 'bg-amber-500' : 'bg-[#10b981]'
+                  }`}
+                ></span>
               </span>
               Google Sheet Live
             </span>
-            <span className="text-[10px] font-mono text-[#94a3b8]">
-              {totalAds.toLocaleString()} ads
-            </span>
+            <span className="text-[10px] font-mono text-[#94a3b8]">{totalAds.toLocaleString()} ads</span>
           </div>
 
           <div className="text-[11px] text-[#94a3b8] flex items-center justify-between">
@@ -107,11 +144,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-[#cbd5e1] font-mono text-[10px]">
               {(() => {
                 if (!syncStatus?.lastSyncedAt) return 'Just now';
-                if (syncStatus.lastSyncedAt.startsWith('Today') || syncStatus.lastSyncedAt.startsWith('Live')) {
+                if (
+                  syncStatus.lastSyncedAt.startsWith('Today') ||
+                  syncStatus.lastSyncedAt.startsWith('Live')
+                ) {
                   return syncStatus.lastSyncedAt;
                 }
                 const d = new Date(syncStatus.lastSyncedAt);
-                return isNaN(d.getTime()) ? syncStatus.lastSyncedAt : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return isNaN(d.getTime())
+                  ? syncStatus.lastSyncedAt
+                  : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               })()}
             </span>
           </div>

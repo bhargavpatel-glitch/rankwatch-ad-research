@@ -9,15 +9,18 @@ import { DataSourcesModal } from './components/DataSourcesModal';
 import { SaveToGroupModal, AdGroup } from './components/SaveToGroupModal';
 import { SavedGroupsView } from './components/SavedGroupsView';
 import { BulkActionBar } from './components/BulkActionBar';
-import { CanonicalAd, SearchResponse, SearchResultItem, AggregatedFilters, FilterState, SyncStatus } from './types';
-import { Compass, ArrowRight } from 'lucide-react';
+import { CanonicalAd, SearchResponse, SearchResultItem, AggregatedFilters, FilterState, SyncStatus, SheetSource, SyncJob } from './types';
+import { Compass, ArrowRight, CheckCircle2, AlertTriangle, X } from 'lucide-react';
 import {
   loadPreloadedAds,
+  setCachedAds,
   getClientFilters,
   searchClientAds,
   loadClientSavedGroups,
   saveClientSavedGroups
 } from './utils/clientSearch';
+import { fetchSheetSourcesFromDB } from './utils/supabaseClient';
+import { executeSyncWorkflow } from './utils/syncEngine';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('library');
@@ -31,8 +34,10 @@ export default function App() {
   const [isDebugModalOpen, setIsDebugModalOpen] = useState(false);
   const [isDataSourcesOpen, setIsDataSourcesOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [sources, setSources] = useState<SheetSource[]>([]);
+  const [completedJob, setCompletedJob] = useState<SyncJob | null>(null);
 
-  // Grouping & Saving state (persisted locally and synced with backend if online)
+  // Grouping & Saving state
   const [groups, setGroups] = useState<AdGroup[]>(() => loadClientSavedGroups());
 
   useEffect(() => {
@@ -54,6 +59,8 @@ export default function App() {
     categories: [],
     topics: [],
     hashtags: [],
+    sources: [],
+    tabs: [],
     sort: 'relevant',
     page: 1,
     limit: 40,
@@ -76,7 +83,7 @@ export default function App() {
     }, 4500);
   };
 
-  // Debounce search input (180ms)
+  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
@@ -97,118 +104,50 @@ export default function App() {
     return () => window.removeEventListener('search:suggest', handleSuggest);
   }, []);
 
-  // Fetch dynamic filters, sync status, and groups on mount
+  // Fetch initial data on mount
   useEffect(() => {
-    fetchFilters();
-    fetchSyncStatus();
-    fetchGroups();
-
-    const interval = setInterval(fetchSyncStatus, 10000);
-    return () => clearInterval(interval);
+    initApp();
   }, []);
 
-  const fetchFilters = async () => {
+  const initApp = async () => {
     try {
-      const res = await fetch('/api/filters');
-      if (res.ok) {
-        const data = await res.json();
-        setFiltersData(data);
-        return;
-      }
-    } catch (err) {
-      // Backend not running (e.g. Netlify static hosting)
-    }
-    const ads = await loadPreloadedAds();
-    setFiltersData(getClientFilters(ads));
-  };
-
-  const fetchSyncStatus = async () => {
-    try {
-      const res = await fetch('/api/sync/status');
-      if (res.ok) {
-        const data = await res.json();
-        setSyncStatus(data);
-        return;
-      }
-    } catch {
-      // Backend not running (Netlify static hosting)
-    }
-    setSyncStatus(prev => {
-      // If currently syncing in client mode, don't overwrite with idle
-      if (prev && prev.isSyncing) return prev;
-      return prev || {
+      const srcList = await fetchSheetSourcesFromDB();
+      setSources(srcList);
+      const ads = await loadPreloadedAds();
+      setFiltersData(getClientFilters(ads));
+      setSyncStatus({
         isSyncing: false,
-        currentStage: 'Idle (Preloaded)',
+        currentStage: 'Idle',
         progressPercent: 100,
         lastSyncedAt: 'Live Preloaded',
-        recordsCount: 7277,
+        recordsCount: ads.length,
         newAdsCount: 0,
         updatedAdsCount: 0,
-        unchangedAdsCount: 7277,
+        unchangedAdsCount: ads.length,
         deletedAdsCount: 0
-      };
-    });
-  };
-
-  const fetchGroups = async () => {
-    try {
-      const res = await fetch('/api/groups');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.groups && data.groups.length > 0) {
-          setGroups(data.groups);
-          return;
-        }
-      }
-    } catch (err) {
-      // Netlify static fallback
+      });
+    } catch (e) {
+      console.error('App init error:', e);
     }
-    setGroups(loadClientSavedGroups());
   };
 
-  // Execute search request (works with backend API and falls back to instant client-side search on Netlify)
+  // Execute search request
   const executeSearch = useCallback(async (isLoadMore = false) => {
     setIsLoading(true);
     try {
-      let data: SearchResponse | null = null;
-      try {
-        const params = new URLSearchParams();
-        if (debouncedQuery) params.append('q', debouncedQuery);
-        if (filterState.brands.length > 0) params.append('brands', filterState.brands.join(','));
-        if (filterState.platforms.length > 0) params.append('platforms', filterState.platforms.join(','));
-        if (filterState.creativeTypes.length > 0) params.append('creativeTypes', filterState.creativeTypes.join(','));
-        if (filterState.categories.length > 0) params.append('categories', filterState.categories.join(','));
-        if (filterState.sort) params.append('sort', filterState.sort);
-        params.append('page', String(isLoadMore ? filterState.page + 1 : 1));
-        params.append('limit', String(filterState.limit));
-
-        const res = await fetch(`/api/ads/search?${params.toString()}`);
-        if (res.ok) {
-          const parsed = await res.json();
-          if (parsed && Array.isArray(parsed.results)) {
-            data = parsed;
-          }
-        }
-      } catch {
-        // Backend offline or on static Netlify host
-      }
-
-      // If backend was not reachable or returned invalid/HTML response, use instant client-side search!
-      if (!data || !data.results) {
-        const ads = await loadPreloadedAds();
-        data = searchClientAds(
-          ads,
-          debouncedQuery,
-          filterState,
-          isLoadMore ? filterState.page + 1 : 1,
-          filterState.limit
-        );
-      }
+      const ads = await loadPreloadedAds();
+      const data = searchClientAds(
+        ads,
+        debouncedQuery,
+        filterState,
+        isLoadMore ? filterState.page + 1 : 1,
+        filterState.limit
+      );
 
       // Update map of ads for quick lookup
       setAllAdsMap(prev => {
         const next = new Map(prev);
-        for (const item of data!.results) {
+        for (const item of data.results) {
           next.set(item.ad.id, item.ad);
         }
         return next;
@@ -216,8 +155,8 @@ export default function App() {
 
       if (isLoadMore) {
         setSearchResponse(prev => prev ? ({
-          ...data!,
-          results: [...prev.results, ...data!.results]
+          ...data,
+          results: [...prev.results, ...data.results]
         }) : data);
         setFilterState(prev => ({ ...prev, page: prev.page + 1 }));
       } else {
@@ -232,76 +171,102 @@ export default function App() {
 
   useEffect(() => {
     executeSearch(false);
-  }, [debouncedQuery, filterState.brands, filterState.platforms, filterState.creativeTypes, filterState.categories, filterState.sort]);
+  }, [
+    debouncedQuery,
+    filterState.brands,
+    filterState.platforms,
+    filterState.creativeTypes,
+    filterState.categories,
+    filterState.sources,
+    filterState.tabs,
+    filterState.sort
+  ]);
 
   const handleFilterChange = (updates: Partial<FilterState>) => {
     setFilterState(prev => ({ ...prev, ...updates, page: 1 }));
   };
 
+  // Algorithm F & Algorithm H: Live Synchronization Workflow
   const handleTriggerSync = async (sheetId?: string) => {
-    setSyncStatus(prev => ({
-      ...(prev || {
-        recordsCount: 7277,
-        newAdsCount: 0,
-        updatedAdsCount: 0,
-        unchangedAdsCount: 7277,
-        deletedAdsCount: 0
-      }),
+    if (syncStatus?.isSyncing) return;
+
+    setSyncStatus({
       isSyncing: true,
-      currentStage: 'Connecting to Google Sheet...',
-      progressPercent: 20,
-      lastSyncedAt: 'Syncing...'
-    }));
+      currentStage: 'Starting sync workflow...',
+      progressPercent: 10,
+      lastSyncedAt: 'Syncing...',
+      recordsCount: 0,
+      newAdsCount: 0,
+      updatedAdsCount: 0,
+      unchangedAdsCount: 0,
+      deletedAdsCount: 0,
+    });
 
     try {
-      const res = await fetch('/api/sync/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sheetId })
-      });
-      if (res.ok) {
-        fetchSyncStatus();
-        setTimeout(fetchFilters, 2500);
-        setTimeout(() => executeSearch(false), 3000);
-        return;
+      let currentSources = sources.length > 0 ? sources : await fetchSheetSourcesFromDB();
+      if (sheetId) {
+        currentSources = currentSources.filter(
+          (s) => s.spreadsheetId === sheetId || s.id === sheetId
+        );
       }
-    } catch {
-      // Backend not running (Netlify static host)
-    }
+      const existingAds = await loadPreloadedAds();
 
-    // Static Netlify sync simulation: refresh preloaded ads cache
-    setTimeout(async () => {
-      setSyncStatus(prev => ({
-        ...(prev || {
-          recordsCount: 7277,
-          newAdsCount: 0,
-          updatedAdsCount: 0,
-          unchangedAdsCount: 7277,
-          deletedAdsCount: 0
-        }),
-        isSyncing: true,
-        currentStage: 'Syncing & Verifying Preloaded Ads...',
-        progressPercent: 75
-      }));
+      const { job, updatedAds } = await executeSyncWorkflow({
+        sources: currentSources,
+        existingAds,
+        onProgress: (progressJob) => {
+          setSyncStatus({
+            isSyncing: progressJob.status === 'running',
+            currentStage: progressJob.currentStage || 'Processing rows...',
+            progressPercent: progressJob.progressPercent,
+            lastSyncedAt: 'Syncing...',
+            recordsCount: progressJob.resultCounts.rowsExamined,
+            newAdsCount: progressJob.resultCounts.newAdsCount,
+            updatedAdsCount: progressJob.resultCounts.updatedAdsCount,
+            unchangedAdsCount: progressJob.resultCounts.unchangedAdsCount,
+            deletedAdsCount: 0,
+            lastJob: progressJob,
+          });
+        },
+      });
 
-      const ads = await loadPreloadedAds();
-      setFiltersData(getClientFilters(ads));
+      // Update in-memory cached ads
+      setCachedAds(updatedAds);
+      setFiltersData(getClientFilters(updatedAds));
       await executeSearch(false);
 
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setSyncStatus({
         isSyncing: false,
-        currentStage: 'Idle (Preloaded)',
+        currentStage: 'Completed',
         progressPercent: 100,
         lastSyncedAt: `Today at ${nowStr}`,
-        recordsCount: ads.length,
+        recordsCount: updatedAds.length,
+        newAdsCount: job.resultCounts.newAdsCount,
+        updatedAdsCount: job.resultCounts.updatedAdsCount,
+        unchangedAdsCount: job.resultCounts.unchangedAdsCount,
+        deletedAdsCount: 0,
+        lastJob: job,
+      });
+
+      // Show completion notification modal
+      setCompletedJob(job);
+    } catch (err: any) {
+      console.error('Sync failed:', err);
+      setSyncStatus({
+        isSyncing: false,
+        currentStage: 'Error',
+        progressPercent: 0,
+        lastSyncedAt: 'Failed',
+        recordsCount: 0,
         newAdsCount: 0,
         updatedAdsCount: 0,
-        unchangedAdsCount: ads.length,
-        deletedAdsCount: 0
+        unchangedAdsCount: 0,
+        deletedAdsCount: 0,
+        error: err.message || 'Sync failed',
       });
-      showToast(`Sheet synchronized successfully (${ads.length} ads up to date)`);
-    }, 1200);
+      showToast(`Sync Error: ${err.message || 'Failed to sync'}`);
+    }
   };
 
   // Grouping & Saving Handlers
@@ -315,14 +280,12 @@ export default function App() {
 
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
-      // Deselect visible
       setSelectedAdIds(prev => {
         const next = new Set(prev);
         visibleAdIds.forEach(id => next.delete(id));
         return next;
       });
     } else {
-      // Select all visible
       setSelectedAdIds(prev => {
         const next = new Set(prev);
         visibleAdIds.forEach(id => next.add(id));
@@ -346,19 +309,9 @@ export default function App() {
   const handleToggleLike = async (adId: string) => {
     const isCurrentlyLiked = likedAdIds.has(adId);
     if (isCurrentlyLiked) {
-      try {
-        await fetch(`/api/groups/liked/ads/${adId}`, { method: 'DELETE' });
-      } catch (e) {}
       setGroups(prev => prev.map(g => g.id === 'liked' ? { ...g, adIds: g.adIds.filter(id => id !== adId) } : g));
       showToast('Removed from liked videos');
     } else {
-      try {
-        await fetch('/api/groups/liked/ads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ adIds: [adId] })
-        });
-      } catch (e) {}
       setGroups(prev => prev.map(g => g.id === 'liked' ? { ...g, adIds: [...new Set([...g.adIds, adId])] } : g));
       showToast('Added to liked videos', 'Liked videos', () => {
         setCurrentTab('groups');
@@ -367,21 +320,6 @@ export default function App() {
   };
 
   const handleSaveToGroup = async (groupId: string, adIds: string[]) => {
-    try {
-      const res = await fetch(`/api/groups/${groupId}/ads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adIds })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.group) {
-          setGroups(prev => prev.map(g => g.id === groupId ? data.group : g));
-          setSelectedAdIds(new Set());
-          return;
-        }
-      }
-    } catch (e) {}
     setGroups(prev => prev.map(g => {
       if (g.id === groupId) {
         return { ...g, adIds: [...new Set([...g.adIds, ...adIds])], updatedAt: new Date().toISOString() };
@@ -392,34 +330,6 @@ export default function App() {
   };
 
   const handleCreateGroup = async (name: string, adIds: string[]) => {
-    try {
-      const res = await fetch('/api/groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.group) {
-          if (adIds.length > 0) {
-            const res2 = await fetch(`/api/groups/${data.group.id}/ads`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ adIds })
-            });
-            if (res2.ok) {
-              const data2 = await res2.json();
-              setGroups(prev => [...prev, data2.group || data.group]);
-              setSelectedAdIds(new Set());
-              return;
-            }
-          }
-          setGroups(prev => [...prev, data.group]);
-          setSelectedAdIds(new Set());
-          return;
-        }
-      }
-    } catch (e) {}
     const newGroup: AdGroup = {
       id: 'grp_' + Date.now().toString(36),
       name,
@@ -432,16 +342,10 @@ export default function App() {
   };
 
   const handleDeleteGroup = async (groupId: string) => {
-    try {
-      await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
-    } catch (e) {}
     setGroups(prev => prev.filter(g => g.id !== groupId));
   };
 
   const handleRemoveAdFromGroup = async (groupId: string, adId: string) => {
-    try {
-      await fetch(`/api/groups/${groupId}/ads/${adId}`, { method: 'DELETE' });
-    } catch (e) {}
     setGroups(prev => prev.map(g => g.id === groupId ? { ...g, adIds: g.adIds.filter(id => id !== adId) } : g));
   };
 
@@ -476,7 +380,7 @@ export default function App() {
     });
   };
 
-  const totalAdsCount = filtersData?.totalAds || 8280;
+  const totalAdsCount = filtersData?.totalAds || 7265;
   const totalSavedCount = groups.reduce((acc, g) => acc + g.adIds.length, 0);
 
   return (
@@ -487,7 +391,7 @@ export default function App() {
         onSelectTab={(tab) => {
           setCurrentTab(tab);
           if (tab === 'library') {
-            setFilterState(prev => ({ ...prev, brands: [], platforms: [], categories: [] }));
+            setFilterState(prev => ({ ...prev, brands: [], platforms: [], categories: [], sources: [], tabs: [] }));
           }
         }}
         syncStatus={syncStatus}
@@ -512,9 +416,29 @@ export default function App() {
             if (!debugMode) setIsDebugModalOpen(true);
           }}
           syncStatus={syncStatus}
-          onTriggerSync={() => handleTriggerSync()}
+          onTriggerSync={handleTriggerSync}
           suggestedQueries={searchResponse?.suggestedQueries}
         />
+
+        {/* Live Syncing Progress Banner */}
+        {syncStatus?.isSyncing && (
+          <div className="bg-[#0e261a] border-b border-[#2fe593]/40 px-6 py-2.5 flex items-center justify-between text-xs animate-in fade-in duration-150 select-none">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#2fe593] animate-ping" />
+              <span className="font-semibold text-white">Syncing Google Sheets:</span>
+              <span className="text-[#2fe593]">{syncStatus.currentStage}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-36 h-1.5 rounded-full bg-[#0a0b0e] overflow-hidden border border-[#184530]">
+                <div
+                  className="h-full bg-[#2fe593] transition-all duration-200"
+                  style={{ width: `${syncStatus.progressPercent}%` }}
+                />
+              </div>
+              <span className="font-mono text-[11px] text-[#2fe593]">{syncStatus.progressPercent}%</span>
+            </div>
+          </div>
+        )}
 
         {/* Tab 1: Ad Library (Main Discovery Grid) */}
         {currentTab === 'library' && (
@@ -557,6 +481,8 @@ export default function App() {
                     categories: [],
                     topics: [],
                     hashtags: [],
+                    sources: [],
+                    tabs: [],
                     sort: 'relevant',
                     page: 1,
                     limit: 40,
@@ -675,9 +601,79 @@ export default function App() {
         onClose={() => setIsDataSourcesOpen(false)}
         syncStatus={syncStatus}
         onTriggerSync={handleTriggerSync}
+        onSourcesUpdated={(newSources) => setSources(newSources)}
       />
 
-      {/* Floating Toast Notification (bottom-right) */}
+      {/* Algorithm H: Sync Completion Notification Modal */}
+      {completedJob && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 select-none">
+          <div className="w-full max-w-md bg-[#0f1115] border border-[#2fe593]/50 rounded-2xl shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0e261a] border border-[#184530] flex items-center justify-center text-[#2fe593]">
+                  <CheckCircle2 className="w-6 h-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">Sync Completed</h3>
+                  <span className="text-[11px] text-[#94a3b8] font-mono">Job: {completedJob.id}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompletedJob(null)}
+                className="p-1 rounded-lg bg-[#13151a] hover:bg-[#181b21] text-[#94a3b8] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Algorithm H Report Cards */}
+            <div className="space-y-3 bg-[#0a0b0e] p-4 rounded-xl border border-[#222630]">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-[#13151a] p-2 rounded-lg border border-[#222630]">
+                  <span className="text-[10px] text-[#64748b] block">Sources</span>
+                  <span className="text-sm font-bold text-white font-mono">{completedJob.resultCounts.sourcesScanned}</span>
+                </div>
+                <div className="bg-[#13151a] p-2 rounded-lg border border-[#222630]">
+                  <span className="text-[10px] text-[#64748b] block">Tabs</span>
+                  <span className="text-sm font-bold text-white font-mono">{completedJob.resultCounts.tabsScanned}</span>
+                </div>
+                <div className="bg-[#13151a] p-2 rounded-lg border border-[#222630]">
+                  <span className="text-[10px] text-[#64748b] block">Rows</span>
+                  <span className="text-sm font-bold text-white font-mono">{completedJob.resultCounts.rowsExamined}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#13151a]">
+                  <span className="text-[#94a3b8]">New Ads Added:</span>
+                  <span className="font-bold text-[#2fe593] font-mono">{completedJob.resultCounts.newAdsCount}</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#13151a]">
+                  <span className="text-[#94a3b8]">Ads Updated:</span>
+                  <span className="font-bold text-amber-400 font-mono">{completedJob.resultCounts.updatedAdsCount}</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#13151a]">
+                  <span className="text-[#94a3b8]">Unchanged:</span>
+                  <span className="font-bold text-[#cbd5e1] font-mono">{completedJob.resultCounts.unchangedAdsCount}</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#13151a]">
+                  <span className="text-[#94a3b8]">Rows Skipped:</span>
+                  <span className="font-bold text-[#64748b] font-mono">{completedJob.resultCounts.skippedRowsCount}</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setCompletedJob(null)}
+              className="w-full py-2.5 rounded-xl bg-[#2fe593] hover:bg-[#28d384] text-[#031a0f] font-bold text-xs shadow-lg shadow-[#2fe593]/20 transition-all"
+            >
+              Continue to Ad Library
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#0f1115]/95 border border-[#222630] shadow-2xl backdrop-blur-md text-white text-xs font-medium">
@@ -700,7 +696,6 @@ export default function App() {
               onClick={() => setToast(null)}
               className="p-1 rounded-md text-[#64748b] hover:text-white hover:bg-[#181b21] transition-colors ml-1"
             >
-              <span className="sr-only">Dismiss</span>
               ✕
             </button>
           </div>
